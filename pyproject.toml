@@ -33,7 +33,7 @@ pandas = { version = "^2.1", optional = false }
 
 
 [tool.poetry.group.dev.dependencies]
-pytest-store = {git = "git@github.com:TBxy/pytest-store.git",  branch = "main", extras=["all"]}
+pytest_store = {git = "git@github.com:TBxy/pytest-store.git",  branch = "main", extras=["all"]}
 tox = ">=4.11.3"
 mypy = ">=1.6.0"
 pytest-xdist = ">=3.3.1"
