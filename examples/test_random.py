@@ -14,6 +14,9 @@ def scope_module():
     yield
     print("Teardown scope module")
 
+@pytest.mark.skip("test skipping")
+def test_skipped():
+    print("This test is skipped")
 
 def test_randint(scope_module):
     numbers = [random.randint(5, 10) for _i in range(1, random.randint(2, 4))]
