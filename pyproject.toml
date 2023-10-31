@@ -33,7 +33,7 @@ pandas = { version = "^2.1", optional = false }
 
 
 [tool.poetry.group.dev.dependencies]
-pytest_store = {git = "git@github.com:TBxy/pytest-store.git",  branch = "main", extras=["all"]}
+pytest-store = {git = "git@github.com:TBxy/pytest-store.git",  branch = "main", extras=["all"]}
 tox = ">=4.11.3"
 mypy = ">=1.6.0"
 pytest-xdist = ">=3.3.1"
@@ -72,7 +72,7 @@ show_contexts = true
 branch = true
 # `parallel` will cause each tox env to put data into a different file, so that we can combine them later
 parallel = true
-source = ["pytest_bdd", "tests"]
+source = ["pytest_rerun_all", "tests"]
 dynamic_context = "test_function"
 
 [tool.coverage.paths]
@@ -127,7 +127,7 @@ isort.required-imports = ["from __future__ import annotations"]
 python_version = "3.9"
 warn_return_any = true
 warn_unused_configs = true
-files = "src/pytest_bdd/**/*.py"
+files = "src/pytest_rerun_all/**/*.py"
 
 [[tool.mypy.overrides]]
 module = ["parse", "parse_type"]
