@@ -2,7 +2,8 @@
 
 import os
 from typing import Callable, Optional, Union
-#import warnings
+
+# import warnings
 import pytest
 
 import time
@@ -19,7 +20,7 @@ try:
 except ImportError:  # Graceful fallback if IceCream isn't installed.
     ic = lambda *a: None if not a else (a[0] if len(a) == 1 else a)  # noqa
 
-#from _pytest.config import notset, Notset
+# from _pytest.config import notset, Notset
 from _pytest.terminal import TerminalReporter
 
 import pandas as pd
@@ -61,6 +62,7 @@ def pytest_configure(config):
     if get_for_seconds(config):
         TerminalReporter._get_progress_information_message = _get_progress  # type: ignore
 
+
 def _get_progress(self):
     """
     Report progress in number of tests, not percentage.
@@ -80,11 +82,13 @@ def _get_progress(self):
         return "[0%]"
 
 
-#def pytest_runtest_setup(item):
+# def pytest_runtest_setup(item):
 
 # def pytest_runtest_setup(item):
+
+
+@pytest.hookimpl(tryfirst=True)
 def pytest_runtest_protocol(item, nextitem):
-    global first_test, times_up
     # reruns = get_reruns_count(item)
     reports = runtestprotocol(item, nextitem=nextitem, log=False)
     for report in reports:  # 3 reports: setup, call, teardown
@@ -92,17 +96,11 @@ def pytest_runtest_protocol(item, nextitem):
             return
     rerun_for_seconds = get_for_seconds(item.session.config, "rerun_for")
     rerun_delay_seconds = get_for_seconds(item.session.config, "rerun_delay")
-    print(f"Rerun for seconds: '{rerun_for_seconds}' seconds")
+    # print(f"Rerun for seconds: '{rerun_for_seconds}' seconds")
     if not rerun_for_seconds:
         return
-    if "first_test_started" not in item.stash:
-        item.stash["first_test_started"] = True
+    if item.session.config.stash.get("start_time", None) is None:
         item.session.config.stash["start_time"] = time.time()
-        item.first_test = True
-    else:
-        item.first_test = False
-        if rerun_delay_seconds:
-            time.sleep(rerun_delay_seconds)
     start_time = item.session.config.stash["start_time"]
     if not hasattr(item, "original_nodeid"):
         item.original_nodeid = item.nodeid
@@ -118,17 +116,17 @@ def pytest_runtest_protocol(item, nextitem):
     else:
         item.execution_count += 1
         item._nodeid = item.nodeid.replace(f"run{item.execution_count-1}", f"run{item.execution_count}")
-    # item.ihook.pytest_runtest_logfinish(nodeid=item.nodeid, location=item.location)
-    if time.time() > start_time + rerun_for_seconds:
-        if item.first_test:
-            first_test = "done"
-            item.stash.set("test_done", True)
-            return
-        if item.stash.get("test_done", False):
-            item.session.items.append(item)
-    else:
-        item.session.items.append(item)
+    item.store_run = item.execution_count
+
+    if item.config.stash.get("next_run_items", None) is None:
+        item.config.stash["next_run_items"] = []
+    item.config.stash["next_run_items"].append(item)
+    if nextitem is None and time.time() < start_time + rerun_for_seconds:
+        for _item in item.config.stash.get("next_run_items", []):
+            item.session.items.append(_item)
+        item.config.stash["next_run_items"] = []
+        if rerun_delay_seconds:
+            time.sleep(rerun_delay_seconds)
+
+    ## item.ihook.pytest_runtest_logfinish(nodeid=item.nodeid, location=item.location)
     return
-
-
-
