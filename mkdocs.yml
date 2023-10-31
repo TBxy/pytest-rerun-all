@@ -1,0 +1,10 @@
+site_name: pytest-rerun-all
+site_description: Rerun whole testsuites for a certain time or amount
+site_author: tb
+
+theme: readthedocs
+
+repo_url: https://github.com/TBxy/pytest-rerun-all
+
+pages:
+- Home: index.md
