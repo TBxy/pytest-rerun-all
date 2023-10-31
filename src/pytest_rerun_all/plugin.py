@@ -45,7 +45,7 @@ def pytest_addoption(parser):
     )
 
 
-def get_for_seconds(config, name="rerun_for") -> Union[None, float]:
+def get_for_seconds(config, name="rerun_for") -> float:
     _rerun_for_str = os.getenv(name.upper())
     if not _rerun_for_str:
         _rerun_for_str = config.getvalue(name.lower())
@@ -55,12 +55,16 @@ def get_for_seconds(config, name="rerun_for") -> Union[None, float]:
         except ValueError:
             rerun_for = pd.Timedelta(_rerun_for_str).total_seconds()
         return rerun_for
-    return None
+    return 0
 
 
 def pytest_configure(config):
     if get_for_seconds(config):
         TerminalReporter._get_progress_information_message = _get_progress  # type: ignore
+
+
+start_time_key = pytest.StashKey[float]()
+next_run_items_key = pytest.StashKey[list[pytest.Item]]()
 
 
 def _get_progress(self):
@@ -70,8 +74,8 @@ def _get_progress(self):
     """
     min_runtime = get_for_seconds(self.config, "rerun_for")
     # collected = self._session.testscollected
-    if min_runtime and "start_time" in self.config.stash:
-        start_time = self.config.stash["start_time"]
+    if min_runtime and self._session.stash.get(start_time_key, None):
+        start_time = self._session.stash[start_time_key]
         current_runtime = time.time() - start_time
         progressbar = round(current_runtime / float(min_runtime) * 100)
         progressbar = progressbar if progressbar <= 100 else 100
@@ -99,9 +103,9 @@ def pytest_runtest_protocol(item, nextitem):
     # print(f"Rerun for seconds: '{rerun_for_seconds}' seconds")
     if not rerun_for_seconds:
         return
-    if item.session.config.stash.get("start_time", None) is None:
-        item.session.config.stash["start_time"] = time.time()
-    start_time = item.session.config.stash["start_time"]
+    if not item.session.stash.get(start_time_key, None):
+        item.session.stash[start_time_key] = time.time()
+    start_time = item.session.stash[start_time_key]
     if not hasattr(item, "original_nodeid"):
         item.original_nodeid = item.nodeid
     else:
@@ -118,13 +122,14 @@ def pytest_runtest_protocol(item, nextitem):
         item._nodeid = item.nodeid.replace(f"run{item.execution_count-1}", f"run{item.execution_count}")
     item.store_run = item.execution_count
 
-    if item.config.stash.get("next_run_items", None) is None:
-        item.config.stash["next_run_items"] = []
-    item.config.stash["next_run_items"].append(item)
-    if nextitem is None and time.time() < start_time + rerun_for_seconds:
-        for _item in item.config.stash.get("next_run_items", []):
+    if item.session.stash.get(next_run_items_key, None) is None:
+        item.session.stash[next_run_items_key] = []
+    item.session.stash[next_run_items_key].append(item)
+    #if nextitem is None and time.time() + rerun_delay_seconds < start_time + rerun_for_seconds:
+    if nextitem == item.session.items[-1] and time.time() + rerun_delay_seconds < start_time + rerun_for_seconds:
+        for _item in item.session.stash.get(next_run_items_key, []):
             item.session.items.append(_item)
-        item.config.stash["next_run_items"] = []
+        item.session.stash[next_run_items_key] = []
         if rerun_delay_seconds:
             time.sleep(rerun_delay_seconds)
 
