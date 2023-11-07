@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pytest-rerun-all"
-version = "0.1.0"
+version = "0.1.1"
 description = "Rerun whole testsuites for a certain time or amount"
 authors = ["tb <tb@wodore.com>"]
 license = "MIT"

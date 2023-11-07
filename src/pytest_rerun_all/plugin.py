@@ -92,8 +92,9 @@ def _get_progress(self: TerminalReporter):
 # def pytest_runtest_setup(item):
 
 
-def _prepare_next_item(item: pytest.Item):
-    item = copy.copy(item)
+def _prepare_next_item(item: pytest.Item, _copy=True):
+    if _copy:
+        item = copy.copy(item)
     if not hasattr(item, "original_nodeid"):
         item.original_nodeid = item.nodeid
     else:
@@ -149,5 +150,9 @@ def pytest_runtest_protocol(item, nextitem):
         if rerun_delay_seconds:
             time.sleep(rerun_delay_seconds)
 
-    ## item.ihook.pytest_runtest_logfinish(nodeid=item.nodeid, location=item.location)
-    return
+    ## item.ihook.pytest_runtest_logfinish(nodeid=item.nodeid, location=item.location) return
+
+
+def pytest_collection_modifyitems(session: pytest.Session, config: pytest.Config, items: list[pytest.Item]) -> None:
+    for item in items:
+        _prepare_next_item(item, _copy=False)
