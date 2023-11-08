@@ -154,5 +154,8 @@ def pytest_runtest_protocol(item, nextitem):
 
 
 def pytest_collection_modifyitems(session: pytest.Session, config: pytest.Config, items: list[pytest.Item]) -> None:
-    for item in items:
-        _prepare_next_item(item, _copy=False)
+    if get_for_seconds(config):
+        for item in items:
+            _prepare_next_item(item, _copy=False)
+        if len(items) == 1:
+            items.append(_prepare_next_item(item, _copy=True))
