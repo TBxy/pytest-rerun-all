@@ -28,6 +28,8 @@ pip install git+git@github.com:TBxy/pytest-rerun-all.git@main
 
 * Fixture to exclude tests from running more than once (eg. `@pytest_rerun_all.only_once()`)
 * If only one test is selected the first tests teardsdown all fixtures, afterwards it is correct.
+* Docu
+* Tests
 
 ## Contributing
 
