@@ -30,12 +30,20 @@ import pandas as pd
 def pytest_addoption(parser):
     group = parser.getgroup("rerun")
     group._addoption(
-        "--rerun-for",
+        "--rerun-time",
         action="store",
         type=str,
         metavar="TIME",
         default=None,
-        help="Rerun tests for 'TIME', argmuent as text (e.g 2 min, 3 hours, ...). Can also be set with the 'RERUN_FOR' environment variable.",
+        help="Rerun tests for 'TIME', argmuent as text (e.g 2 min, 3 hours, ...). Can also be set with the 'RERUN_TIME' environment variable.",
+    )
+    group._addoption(
+        "--rerun-count",
+        action="store",
+        type=int,
+        metavar="INT",
+        default=None,
+        help="Rerun tests for 'COUNT' times. Can also be set with the 'RERUN_COUNT' environment variable.",
     )
     group._addoption(
         "--rerun-delay",
@@ -44,28 +52,60 @@ def pytest_addoption(parser):
         type=str,
         help="Add time (e.g. 30 sec) delay between reruns.",
     )
+    group._addoption(
+        "--rerun-teardown",
+        action="store_true",
+        help="Teardown session after each run.",
+    )
 
 
-def get_for_seconds(config, name="rerun_for") -> float:
-    _rerun_for_str = os.getenv(name.upper())
-    if not _rerun_for_str:
-        _rerun_for_str = config.getvalue(name.lower())
-    if _rerun_for_str:
+def get_time_seconds(config, name="rerun_time") -> float:
+    _rerun_time_str = os.getenv(name.upper())
+    if not _rerun_time_str:
+        _rerun_time_str = config.getvalue(name.lower())
+    if _rerun_time_str:
         try:
-            rerun_for = pd.Timedelta(int(_rerun_for_str), unit="sec").total_seconds()  # noqa: N806
+            rerun_time = pd.Timedelta(int(_rerun_time_str), unit="sec").total_seconds()  # noqa: N806
         except ValueError:
-            rerun_for = pd.Timedelta(_rerun_for_str).total_seconds()
-        return rerun_for
+            rerun_time = pd.Timedelta(_rerun_time_str).total_seconds()
+        return rerun_time
     return 0
 
 
+def get_rerun_count(config, name="rerun_count") -> int:
+    _rerun_count_str = os.getenv(name.upper())
+    if not _rerun_count_str:
+        _rerun_count_str = config.getvalue(name.lower())
+    if _rerun_count_str:
+        try:
+            rerun_count = int(_rerun_count_str)
+        except ValueError:
+            raise UserWarning("Wrong value for --rerun-count.")
+        return rerun_count
+    return 0
+
+
+def get_rerun_teardown(config, name="rerun_teardown") -> int:
+    _rerun_teardown_str = os.getenv(name.upper())
+    if not _rerun_teardown_str:
+        rerun_teardown = config.getvalue(name.lower())
+    else:
+        try:
+            rerun_teardown = bool(int(_rerun_teardown_str))
+        except ValueError:
+            raise UserWarning("Wrong value for --rerun-count.")
+    return rerun_teardown
+
+
 def pytest_configure(config):
-    if get_for_seconds(config):
+    if get_time_seconds(config):
         TerminalReporter._get_progress_information_message = _get_progress  # type: ignore
 
 
 start_time_key = pytest.StashKey[float]()
+exec_count_key = pytest.StashKey[int]()
 next_run_items_key = pytest.StashKey[list[pytest.Item]]()
+add_next_key = pytest.StashKey[bool]()
 
 
 def _get_progress(self: TerminalReporter):
@@ -73,18 +113,21 @@ def _get_progress(self: TerminalReporter):
     Report progress in number of tests, not percentage.
     Since we have thousands of tests, 1% is still several tests.
     """
-    min_runtime = get_for_seconds(self.config, "rerun_for")
+    min_runtime = get_time_seconds(self.config, "rerun_time")
+    counts = get_rerun_count(self.config)
     # collected = self._session.testscollected
-    if min_runtime and self._session.stash.get(start_time_key, None):
+    if counts:
+        progressbar = round((self._session.stash.get(exec_count_key, 0) + 1) / float(counts) * 100)
+    elif min_runtime and self._session.stash.get(start_time_key, None):
         start_time = self._session.stash[start_time_key]
         current_runtime = time.time() - start_time
         progressbar = round(current_runtime / float(min_runtime) * 100)
         progressbar = progressbar if progressbar <= 100 else 100
         if progressbar >= 100:
             progressbar = 99
-        return f"[{progressbar:>3}%]"
     else:
-        return "[  0%]"
+        progressbar = 0
+    return f"[{progressbar:>3}%]"
 
 
 # def pytest_runtest_setup(item):
@@ -113,38 +156,67 @@ def _prepare_next_item(item: pytest.Item, _copy=True):
     return item
 
 
+def _time_not_up(item: pytest.Item):
+    rerun_time_seconds = get_time_seconds(item.session.config, "rerun_time")
+    if not rerun_time_seconds:
+        return True
+    rerun_delay_seconds = get_time_seconds(item.session.config, "rerun_delay")
+    start_time = item.session.stash[start_time_key]
+    return time.time() + rerun_delay_seconds < start_time + rerun_time_seconds
+
+
+def _last_item(item: pytest.Item, nextitem: Optional[pytest.Item]):
+    if get_rerun_teardown(item.session.config):
+        return nextitem is None
+    else:
+        return nextitem == item.session.items[-1]
+
+
+def _count_not_up(item: pytest.Item):
+    rerun_count = get_rerun_count(item.session.config)
+    if not rerun_count:
+        return True
+    return item.execution_count < rerun_count
+
+
 @pytest.hookimpl(tryfirst=True)
-def pytest_runtest_protocol(item, nextitem):
+def pytest_runtest_protocol(item: pytest.Item, nextitem: Optional[pytest.Item]):
     # reruns = get_reruns_count(item)
     reports = runtestprotocol(item, nextitem=nextitem, log=False)
     for report in reports:  # 3 reports: setup, call, teardown
         if report.skipped:
             return
-    rerun_for_seconds = get_for_seconds(item.session.config, "rerun_for")
-    rerun_delay_seconds = get_for_seconds(item.session.config, "rerun_delay")
-    if not rerun_for_seconds:
+    rerun_time_seconds = get_time_seconds(item.session.config, "rerun_time")
+    rerun_delay_seconds = get_time_seconds(item.session.config, "rerun_delay")
+    rerun_count = get_rerun_count(item.session.config, "rerun_count")
+    if not rerun_time_seconds and not rerun_count:
         return
+    item.session.stash[exec_count_key] = item.execution_count
     if not item.session.stash.get(start_time_key, None):
         item.session.stash[start_time_key] = time.time()
-    if item.session.stash.get("add_next", None) is None:
-        item.session.stash["add_next"] = False
+    if item.session.stash.get(add_next_key, None) is None:
+        item.session.stash[add_next_key] = True
     start_time = item.session.stash[start_time_key]
-    item = _prepare_next_item(item)
     if item.session.stash.get(next_run_items_key, None) is None:
         item.session.stash[next_run_items_key] = []
-    if item.session.stash["add_next"]:
+
+    if nextitem is None and item.execution_count == 0 and not get_rerun_teardown(item.session.config):
+        item = _prepare_next_item(item)
+        nextitem = item
         item.session.items.append(item)
-        item.session.stash["add_next"] = False
-    else:
+        item.session.stash[add_next_key] = False
+    item = _prepare_next_item(item)
+    if item.session.stash[add_next_key]:
         item.session.stash[next_run_items_key].append(item)
-    # if nextitem is None and time.time() + rerun_delay_seconds < start_time + rerun_for_seconds:
-    if nextitem == item.session.items[-1] and time.time() + rerun_delay_seconds < start_time + rerun_for_seconds:
-        for _item in item.session.stash.get(next_run_items_key, []):
-            item.session.items.append(_item)
-        # item.session.stash["add_next"] = True
+    else:
+        item.session.stash[add_next_key] = True
+    if _last_item(item, nextitem) and _time_not_up(item) and _count_not_up(item):
         if nextitem is not None:
             _nextitem = _prepare_next_item(nextitem)
-            item.session.items.append(_nextitem)
+            item.session.stash[next_run_items_key].append(_nextitem)
+            item.session.stash[add_next_key] = False
+        for _item in item.session.stash.get(next_run_items_key, []):
+            item.session.items.append(_item)
         item.session.testscollected = len(item.session.items)
         item.session.stash[next_run_items_key] = []
         if rerun_delay_seconds:
@@ -154,8 +226,6 @@ def pytest_runtest_protocol(item, nextitem):
 
 
 def pytest_collection_modifyitems(session: pytest.Session, config: pytest.Config, items: list[pytest.Item]) -> None:
-    if get_for_seconds(config):
+    if get_time_seconds(config):
         for item in items:
             _prepare_next_item(item, _copy=False)
-        if len(items) == 1:
-            items.append(_prepare_next_item(item, _copy=True))

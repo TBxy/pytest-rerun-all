@@ -1,76 +1,61 @@
-================
-pytest-rerun-all
-================
-
-.. image:: https://img.shields.io/pypi/v/pytest-rerun-all.svg
-    :target: https://pypi.org/project/pytest-rerun-all
-    :alt: PyPI version
-
-.. image:: https://img.shields.io/pypi/pyversions/pytest-rerun-all.svg
-    :target: https://pypi.org/project/pytest-rerun-all
-    :alt: Python versions
-
-.. image:: https://ci.appveyor.com/api/projects/status/github/TBxy/pytest-rerun-all?branch=master
-    :target: https://ci.appveyor.com/project/TBxy/pytest-rerun-all/branch/master
-    :alt: See Build Status on AppVeyor
-
+# pytest-rerun-all
 Rerun whole testsuites for a certain time or amount
+
+_Still under development._
+
+## Examples
+
+```shell
+pytest --rerun-time "10s" examples  # run tests for 10 secons
+pytest --rerun-count "10" examples  # run all tests 10 times
+# run all tests 10 times and teardown all fixtures after each run
+pytest --rerun-count "10" --rerun-teardown examples 
+# run tests for 2 hours with 10 secons delay after each run
+pytest --rerun-time "2 hours" --rerun-dealy "10s" examples 
+```
+
+## Installation
+
+You can install `pytest-rerun-all` via [pip] from this repo:
+<!--- [pip] from [PyPI]: -->
+
+```shell
+pip install git+git@github.com:TBxy/pytest-rerun-all.git@main
+#pip install pytest-rerun-all # not supported yet
+```
+
+## Todos
+
+* Fixture to exclude tests from running more than once (eg. `@pytest_rerun_all.only_once()`)
+* If only one test is selected the first tests teardsdown all fixtures, afterwards it is correct.
+
+## Contributing
+
+Contributions are very welcome. 
+Tests are not ready at the moment, use the example scripts.
+<!-- Tests can be run with [tox], please ensure
+the coverage at least stays the same before you submit a pull request. -->
+
+## License
+
+Distributed under the terms of the [MIT] license, `pytest-rerun-all` is free and open source software
+
+
+## Issues
+
+If you encounter any problems, please [file an issue] along with a detailed description.
+
+[Cookiecutter]: https://github.com/audreyr/cookiecutter
+[@hackebrot]: https://github.com/hackebrot
+[MIT]: http://opensource.org/licenses/MIT
+[cookiecutter-pytest-plugin]: https://github.com/pytest-dev/cookiecutter-pytest-plugin
+[file an issue]: https://github.com/TBxy/pytest-rerun-all/issues
+[pytest]: https://github.com/pytest-dev/pytest
+[tox]: https://tox.readthedocs.io/en/latest/
+[pip]: https://pypi.org/project/pip/
+[PyPI]: https://pypi.org/project
 
 ----
 
-This `pytest`_ plugin was generated with `Cookiecutter`_ along with `@hackebrot`_'s `cookiecutter-pytest-plugin`_ template.
+This [pytest] plugin was generated with [Cookiecutter] along with [@hackebrot]'s [cookiecutter-pytest-plugin] template.
 
-
-Features
---------
-
-* TODO
-
-
-Requirements
-------------
-
-* TODO
-
-
-Installation
-------------
-
-You can install "pytest-rerun-all" via `pip`_ from `PyPI`_::
-
-    $ pip install pytest-rerun-all
-
-
-Usage
------
-
-* TODO
-
-Contributing
-------------
-Contributions are very welcome. Tests can be run with `tox`_, please ensure
-the coverage at least stays the same before you submit a pull request.
-
-License
--------
-
-Distributed under the terms of the `MIT`_ license, "pytest-rerun-all" is free and open source software
-
-
-Issues
-------
-
-If you encounter any problems, please `file an issue`_ along with a detailed description.
-
-.. _`Cookiecutter`: https://github.com/audreyr/cookiecutter
-.. _`@hackebrot`: https://github.com/hackebrot
-.. _`MIT`: http://opensource.org/licenses/MIT
-.. _`BSD-3`: http://opensource.org/licenses/BSD-3-Clause
-.. _`GNU GPL v3.0`: http://www.gnu.org/licenses/gpl-3.0.txt
-.. _`Apache Software License 2.0`: http://www.apache.org/licenses/LICENSE-2.0
-.. _`cookiecutter-pytest-plugin`: https://github.com/pytest-dev/cookiecutter-pytest-plugin
-.. _`file an issue`: https://github.com/TBxy/pytest-rerun-all/issues
-.. _`pytest`: https://github.com/pytest-dev/pytest
-.. _`tox`: https://tox.readthedocs.io/en/latest/
-.. _`pip`: https://pypi.org/project/pip/
-.. _`PyPI`: https://pypi.org/project

@@ -2,9 +2,21 @@ site_name: pytest-rerun-all
 site_description: Rerun whole testsuites for a certain time or amount
 site_author: tb
 
-theme: readthedocs
+theme: material
 
 repo_url: https://github.com/TBxy/pytest-rerun-all
 
-pages:
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+
+plugins:
+  - mkdocstrings
+
+nav:
 - Home: index.md
