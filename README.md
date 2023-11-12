@@ -3,6 +3,10 @@ Rerun whole testsuites for a certain time or amount
 
 _Still under development._
 
+## Arguments
+
+`--rerun-time TIME` Rerun tests for 'TIME', argmuent as text (e.g 2 min, 3 hours, ...). Can also be set with the 'RERUN_TIME' environment variable.
+
 ## Examples
 
 ```shell
