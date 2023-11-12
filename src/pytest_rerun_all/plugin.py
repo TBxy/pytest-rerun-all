@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 
+import datetime
 import os
 from typing import Callable, Optional, Union
+import dateparser
 
 # import warnings
 import pytest
@@ -28,35 +30,43 @@ import pandas as pd
 
 
 def pytest_addoption(parser):
-    group = parser.getgroup("rerun")
+    group = parser.getgroup("rerun testsuite")
     group._addoption(
         "--rerun-time",
         action="store",
         type=str,
         metavar="TIME",
         default=None,
-        help="Rerun tests for 'TIME', argmuent as text (e.g 2 min, 3 hours, ...). Can also be set with the 'RERUN_TIME' environment variable.",
+        help="Rerun testsuite for the specified time, argument as text (e.g 2 min, 3 hours, ...), the default unit is seconds. (Env: RERUN_TIME)",
     )
     group._addoption(
-        "--rerun-count",
+        "--rerun-iter",
         action="store",
         type=int,
         metavar="INT",
         default=None,
-        help="Rerun tests for 'COUNT' times. Can also be set with the 'RERUN_COUNT' environment variable.",
+        help="Rerun testsuite for the specified iterations. (Env: RERUN_ITER)",
     )
     group._addoption(
         "--rerun-delay",
         action="store",
         metavar="TIME",
         type=str,
-        help="Add time (e.g. 30 sec) delay between reruns.",
+        help="After each testsuite run wait for the specified time, argument as text (e.g 2 min, 10, ...), the default unit is seconds. (Env: RERUN_DELAY)",
     )
     group._addoption(
-        "--rerun-teardown",
+        "--rerun-fresh",
         action="store_true",
-        help="Teardown session after each run.",
+        help='Start each testsuite run with "fresh" fixtures (teardown all fixtures), per default no teardown is done if not needed. (Env: RERUN_FRESH)',
     )
+
+
+def _timedelata_seconds(text: str) -> Optional[float]:
+    parse_date = dateparser.parse(text, languages=["en"], settings={"PARSERS": ["relative-time"]})
+    if parse_date is not None:
+        return round((parse_date - datetime.datetime.today()).total_seconds(), 2)
+    else:
+        return None
 
 
 def get_time_seconds(config, name="rerun_time") -> float:
@@ -64,37 +74,41 @@ def get_time_seconds(config, name="rerun_time") -> float:
     if not _rerun_time_str:
         _rerun_time_str = config.getvalue(name.lower())
     if _rerun_time_str:
-        try:
-            rerun_time = pd.Timedelta(int(_rerun_time_str), unit="sec").total_seconds()  # noqa: N806
-        except ValueError:
-            rerun_time = pd.Timedelta(_rerun_time_str).total_seconds()
+        rerun_time = _timedelata_seconds(_rerun_time_str)
+        if rerun_time is None:  # no unit
+            _rerun_time_str = f"{_rerun_time_str} sec"
+            rerun_time = _timedelata_seconds(_rerun_time_str)
+        if rerun_time is not None and rerun_time < 0:
+            rerun_time = _timedelata_seconds(f"in {_rerun_time_str}")
+        if rerun_time is None:  # no unit
+            raise UserWarning(f"Could not parse time '{_rerun_time_str}'.")
         return rerun_time
     return 0
 
 
-def get_rerun_count(config, name="rerun_count") -> int:
-    _rerun_count_str = os.getenv(name.upper())
-    if not _rerun_count_str:
-        _rerun_count_str = config.getvalue(name.lower())
-    if _rerun_count_str:
+def get_rerun_iter(config, name="rerun_iter") -> int:
+    _rerun_iter_str = os.getenv(name.upper())
+    if not _rerun_iter_str:
+        _rerun_iter_str = config.getvalue(name.lower())
+    if _rerun_iter_str:
         try:
-            rerun_count = int(_rerun_count_str)
+            rerun_iter = int(_rerun_iter_str)
         except ValueError:
             raise UserWarning("Wrong value for --rerun-count.")
-        return rerun_count
+        return rerun_iter
     return 0
 
 
-def get_rerun_teardown(config, name="rerun_teardown") -> int:
-    _rerun_teardown_str = os.getenv(name.upper())
-    if not _rerun_teardown_str:
-        rerun_teardown = config.getvalue(name.lower())
+def get_rerun_fresh(config, name="rerun_fresh") -> int:
+    _rerun_fresh_str = os.getenv(name.upper())
+    if not _rerun_fresh_str:
+        rerun_fresh = config.getvalue(name.lower())
     else:
         try:
-            rerun_teardown = bool(int(_rerun_teardown_str))
+            rerun_fresh = bool(int(_rerun_fresh_str))
         except ValueError:
             raise UserWarning("Wrong value for --rerun-count.")
-    return rerun_teardown
+    return rerun_fresh
 
 
 def pytest_configure(config):
@@ -114,7 +128,7 @@ def _get_progress(self: TerminalReporter):
     Since we have thousands of tests, 1% is still several tests.
     """
     min_runtime = get_time_seconds(self.config, "rerun_time")
-    counts = get_rerun_count(self.config)
+    counts = get_rerun_iter(self.config)
     # collected = self._session.testscollected
     if counts:
         progressbar = round((self._session.stash.get(exec_count_key, 0) + 1) / float(counts) * 100)
@@ -166,17 +180,17 @@ def _time_not_up(item: pytest.Item):
 
 
 def _last_item(item: pytest.Item, nextitem: Optional[pytest.Item]):
-    if get_rerun_teardown(item.session.config):
+    if get_rerun_fresh(item.session.config):
         return nextitem is None
     else:
         return nextitem == item.session.items[-1]
 
 
 def _count_not_up(item: pytest.Item):
-    rerun_count = get_rerun_count(item.session.config)
-    if not rerun_count:
+    rerun_iter = get_rerun_iter(item.session.config)
+    if not rerun_iter:
         return True
-    return item.execution_count < rerun_count
+    return item.execution_count < rerun_iter
 
 
 @pytest.hookimpl(tryfirst=True)
@@ -188,8 +202,8 @@ def pytest_runtest_protocol(item: pytest.Item, nextitem: Optional[pytest.Item]):
             return
     rerun_time_seconds = get_time_seconds(item.session.config, "rerun_time")
     rerun_delay_seconds = get_time_seconds(item.session.config, "rerun_delay")
-    rerun_count = get_rerun_count(item.session.config, "rerun_count")
-    if not rerun_time_seconds and not rerun_count:
+    rerun_iter = get_rerun_iter(item.session.config, "rerun_iter")
+    if not rerun_time_seconds and not rerun_iter:
         return
     item.session.stash[exec_count_key] = item.execution_count
     if not item.session.stash.get(start_time_key, None):
@@ -200,7 +214,7 @@ def pytest_runtest_protocol(item: pytest.Item, nextitem: Optional[pytest.Item]):
     if item.session.stash.get(next_run_items_key, None) is None:
         item.session.stash[next_run_items_key] = []
 
-    if nextitem is None and item.execution_count == 0 and not get_rerun_teardown(item.session.config):
+    if nextitem is None and item.execution_count == 0 and not get_rerun_fresh(item.session.config):
         item = _prepare_next_item(item)
         nextitem = item
         item.session.items.append(item)

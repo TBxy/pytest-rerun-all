@@ -23,13 +23,18 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 
+
+[tool.poetry.urls]
+"Changelog" = "https://github.com/TBxy/pytest-rerun-all/blob/main/CHANGELOG.md"
+"Issues" = "https://github.com/TBxy/pytest-rerun-all/issues"
+
 [tool.poetry.plugins."pytest11"]
 "pytest-rerun-all" = "pytest_rerun_all.plugin"
 
 [tool.poetry.dependencies]
 python = ">=3.9,<3.13"
 pytest = ">=7.0.0"
-pandas = { version = "^2.1", optional = false }
+dateparser = "^1.1"
 
 
 [tool.poetry.group.dev.dependencies]
