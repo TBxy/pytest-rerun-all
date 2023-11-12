@@ -69,10 +69,10 @@ def _timedelata_seconds(text: str) -> Optional[float]:
         return None
 
 
-def get_time_seconds(config, name="rerun_time") -> float:
-    _rerun_time_str = os.getenv(name.upper())
+def get_time_seconds(config: pytest.Config, name="rerun_time") -> float:
+    _rerun_time_str = config.getvalue(name.lower())
     if not _rerun_time_str:
-        _rerun_time_str = config.getvalue(name.lower())
+        _rerun_time_str = os.getenv(name.upper())
     if _rerun_time_str:
         rerun_time = _timedelata_seconds(_rerun_time_str)
         if rerun_time is None:  # no unit
@@ -86,28 +86,28 @@ def get_time_seconds(config, name="rerun_time") -> float:
     return 0
 
 
-def get_rerun_iter(config, name="rerun_iter") -> int:
-    _rerun_iter_str = os.getenv(name.upper())
+def get_rerun_iter(config: pytest.Config, name="rerun_iter") -> int:
+    _rerun_iter_str = config.getvalue(name.lower())
     if not _rerun_iter_str:
-        _rerun_iter_str = config.getvalue(name.lower())
+        _rerun_iter_str = os.getenv(name.upper())
     if _rerun_iter_str:
         try:
             rerun_iter = int(_rerun_iter_str)
         except ValueError:
-            raise UserWarning("Wrong value for --rerun-count.")
+            raise UserWarning("Wrong value for --rerun-iter.")
         return rerun_iter
     return 0
 
 
-def get_rerun_fresh(config, name="rerun_fresh") -> int:
-    _rerun_fresh_str = os.getenv(name.upper())
-    if not _rerun_fresh_str:
-        rerun_fresh = config.getvalue(name.lower())
+def get_rerun_fresh(config: pytest.Config, name="rerun_fresh") -> int:
+    rerun_fresh = config.getvalue(name.lower())
+    if not rerun_fresh:
+        _rerun_fresh_str = os.getenv(name.upper())
     else:
         try:
             rerun_fresh = bool(int(_rerun_fresh_str))
         except ValueError:
-            raise UserWarning("Wrong value for --rerun-count.")
+            raise UserWarning("Wrong value for RERUN_FRESH.")
     return rerun_fresh
 
 
