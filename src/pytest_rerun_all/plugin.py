@@ -15,7 +15,7 @@ from _pytest.runner import runtestprotocol
 
 try:
     from rich import print
-except ImportError:  # Graceful fallback if IceCream isn't installed.
+except ImportError:
     pass
 
 try:
@@ -25,12 +25,11 @@ except ImportError:  # Graceful fallback if IceCream isn't installed.
 
 # from _pytest.config import notset, Notset
 from _pytest.terminal import TerminalReporter
-
-import pandas as pd
+from _pytest.pathlib import bestrelpath
 
 
 def pytest_addoption(parser):
-    group = parser.getgroup("rerun testsuite")
+    group = parser.getgroup("rerun all")
     group._addoption(
         "--rerun-time",
         action="store",
@@ -61,7 +60,28 @@ def pytest_addoption(parser):
     )
 
 
+# config stash key
+rerun_time_key = pytest.StashKey[float]()
+rerun_delay_key = pytest.StashKey[float]()
+rerun_iter_key = pytest.StashKey[int]()
+rerun_fresh_key = pytest.StashKey[bool]()
+
+# session stash key
+start_time_key = pytest.StashKey[float]()
+next_run_items_key = pytest.StashKey[list[pytest.Item]]()
+add_next_key = pytest.StashKey[bool]()
+
+# item stash key
+rerun_count_key = pytest.StashKey[int]()
+# added for pytest-store support
+# store_testname_key = "store_testname"
+store_testname_attr = "_store_testname"
+# store_run_key = "store_run"
+store_run_attr = "_store_run"
+
+
 def _timedelata_seconds(text: str) -> Optional[float]:
+    """retunr timedelate in seconds from a string, None if not possible"""
     parse_date = dateparser.parse(text, languages=["en"], settings={"PARSERS": ["relative-time"]})
     if parse_date is not None:
         return round((parse_date - datetime.datetime.today()).total_seconds(), 2)
@@ -70,10 +90,11 @@ def _timedelata_seconds(text: str) -> Optional[float]:
 
 
 def get_time_seconds(config: pytest.Config, name="rerun_time") -> float:
+    """get seconds from string either from a argument or env variable"""
     _rerun_time_str = config.getvalue(name.lower())
     if not _rerun_time_str:
         _rerun_time_str = os.getenv(name.upper())
-    if _rerun_time_str:
+    if isinstance(_rerun_time_str, str):
         rerun_time = _timedelata_seconds(_rerun_time_str)
         if rerun_time is None:  # no unit
             _rerun_time_str = f"{_rerun_time_str} sec"
@@ -99,27 +120,43 @@ def get_rerun_iter(config: pytest.Config, name="rerun_iter") -> int:
     return 0
 
 
-def get_rerun_fresh(config: pytest.Config, name="rerun_fresh") -> int:
+def get_rerun_fresh(config: pytest.Config, name="rerun_fresh") -> bool:
     rerun_fresh = config.getvalue(name.lower())
     if not rerun_fresh:
-        _rerun_fresh_str = os.getenv(name.upper())
+        _rerun_fresh_str = os.getenv(name.upper(), None)
+        if _rerun_fresh_str is not None:
+            try:
+                rerun_fresh = bool(_rerun_fresh_str.lower()[0] in ["o", "y", "1", "t"])
+            except ValueError:
+                raise UserWarning("Wrong value for RERUN_FRESH.")
     else:
-        try:
-            rerun_fresh = bool(int(_rerun_fresh_str))
-        except ValueError:
-            raise UserWarning("Wrong value for RERUN_FRESH.")
+        rerun_fresh = bool(rerun_fresh)
     return rerun_fresh
 
 
 def pytest_configure(config):
-    if get_time_seconds(config):
+    config.stash[rerun_time_key] = get_time_seconds(config, "rerun_time")
+    config.stash[rerun_delay_key] = get_time_seconds(config, "rerun_delay")
+    config.stash[rerun_iter_key] = get_rerun_iter(config)
+    config.stash[rerun_fresh_key] = get_rerun_fresh(config)
+
+    config.addinivalue_line("markers", "once: run this test only once")
+    if config.stash[rerun_time_key]:
         TerminalReporter._get_progress_information_message = _get_progress  # type: ignore
+        TerminalReporter.write_fspath_result = _write_fspath_result  # type: ignore
 
 
-start_time_key = pytest.StashKey[float]()
-exec_count_key = pytest.StashKey[int]()
-next_run_items_key = pytest.StashKey[list[pytest.Item]]()
-add_next_key = pytest.StashKey[bool]()
+def _write_fspath_result(self: TerminalReporter, nodeid: str, res, **markup: bool) -> None:
+    fspath = self.config.rootpath / nodeid.split("::")[0]
+    if self.currentfspath is None or fspath != self.currentfspath:
+        if self.currentfspath is not None and self._show_progress_info:
+            self._write_progress_information_filling_space()
+        self.currentfspath = fspath
+        relfspath = bestrelpath(self.startpath, fspath)
+        self._tw.line()
+        self._tw.write(relfspath)
+        self._tw.write(f" #{self._session.stash.get(rerun_count_key, 0)} ", light=True)
+    self._tw.write(res, flush=True, **markup)
 
 
 def _get_progress(self: TerminalReporter):
@@ -127,12 +164,13 @@ def _get_progress(self: TerminalReporter):
     Report progress in number of tests, not percentage.
     Since we have thousands of tests, 1% is still several tests.
     """
-    min_runtime = get_time_seconds(self.config, "rerun_time")
-    counts = get_rerun_iter(self.config)
+    assert self._session
+    min_runtime = self.config.stash.get(rerun_time_key, 0)
+    counts = self.config.stash.get(rerun_iter_key, 0)
     # collected = self._session.testscollected
     if counts:
-        progressbar = round((self._session.stash.get(exec_count_key, 0) + 1) / float(counts) * 100)
-    elif min_runtime and self._session.stash.get(start_time_key, None):
+        progressbar = round((self._session.stash.get(rerun_count_key, 0) + 1) / float(counts) * 100)
+    elif min_runtime and self._session.stash.get(start_time_key, 0):
         start_time = self._session.stash[start_time_key]
         current_runtime = time.time() - start_time
         progressbar = round(current_runtime / float(min_runtime) * 100)
@@ -144,90 +182,105 @@ def _get_progress(self: TerminalReporter):
     return f"[{progressbar:>3}%]"
 
 
-# def pytest_runtest_setup(item):
-
-# def pytest_runtest_setup(item):
-
-
 def _prepare_next_item(item: pytest.Item, _copy=True):
     if _copy:
         item = copy.copy(item)
-    if not hasattr(item, "original_nodeid"):
-        item.original_nodeid = item.nodeid
-    else:
-        item.original_nodeid = item.original_nodeid
-    if not hasattr(item, "execution_count"):
-        item.execution_count = 0
+    if not getattr(item, store_testname_attr, ""):
+        setattr(item, store_testname_attr, item.nodeid)
+    if item.stash.get(rerun_count_key, None) is None:
+        item.stash[rerun_count_key] = 0
         if "]" not in item.nodeid:
             item._nodeid = f"{item.nodeid}[]"
         else:
             item._nodeid = item.nodeid.replace("]", "-]")
-        item._nodeid = item.nodeid.replace("]", f"run{item.execution_count}]")
+        item._nodeid = item.nodeid.replace("]", f"run{item.stash[rerun_count_key]}]")
     else:
-        item.execution_count += 1
-        item._nodeid = item.nodeid.replace(f"run{item.execution_count-1}", f"run{item.execution_count}")
-    item.store_run = item.execution_count
+        item.stash[rerun_count_key] += 1
+        item._nodeid = item.nodeid.replace(f"run{item.stash[rerun_count_key]-1}", f"run{item.stash[rerun_count_key]}")
+    setattr(item, store_run_attr, item.stash[rerun_count_key])
     return item
 
 
 def _time_not_up(item: pytest.Item):
-    rerun_time_seconds = get_time_seconds(item.session.config, "rerun_time")
+    rerun_time_seconds = item.session.config.stash.get(rerun_time_key, 0)
     if not rerun_time_seconds:
         return True
-    rerun_delay_seconds = get_time_seconds(item.session.config, "rerun_delay")
+    rerun_delay_seconds = item.session.config.stash.get(rerun_delay_key, 0)
     start_time = item.session.stash[start_time_key]
     return time.time() + rerun_delay_seconds < start_time + rerun_time_seconds
 
 
 def _last_item(item: pytest.Item, nextitem: Optional[pytest.Item]):
-    if get_rerun_fresh(item.session.config):
+    if item.session.config.stash.get(rerun_fresh_key, False):
         return nextitem is None
     else:
         return nextitem == item.session.items[-1]
 
 
 def _count_not_up(item: pytest.Item):
-    rerun_iter = get_rerun_iter(item.session.config)
+    rerun_iter = item.session.config.stash.get(rerun_iter_key, 0)
     if not rerun_iter:
         return True
-    return item.execution_count < rerun_iter
+    return item.stash[rerun_count_key] < rerun_iter
+
+
+def _use_rerun(session: pytest.Session) -> bool:
+    rerun_time_seconds = session.config.stash.get(rerun_time_key, 0)
+    rerun_iter = session.config.stash.get(rerun_iter_key, 0)
+    if rerun_time_seconds or rerun_iter:
+        return True
+    return False
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtestloop(session: pytest.Session):
+    if not _use_rerun(session):
+        return
+    if not session.stash.get(start_time_key, None):
+        session.stash[start_time_key] = time.time()
+    if session.stash.get(add_next_key, None) is None:
+        session.stash[add_next_key] = True
+    if session.stash.get(next_run_items_key, None) is None:
+        session.stash[next_run_items_key] = []
 
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_runtest_protocol(item: pytest.Item, nextitem: Optional[pytest.Item]):
-    # reruns = get_reruns_count(item)
+    if not _use_rerun(item.session):
+        return
     reports = runtestprotocol(item, nextitem=nextitem, log=False)
     for report in reports:  # 3 reports: setup, call, teardown
         if report.skipped:
             return
-    rerun_time_seconds = get_time_seconds(item.session.config, "rerun_time")
-    rerun_delay_seconds = get_time_seconds(item.session.config, "rerun_delay")
-    rerun_iter = get_rerun_iter(item.session.config, "rerun_iter")
-    if not rerun_time_seconds and not rerun_iter:
-        return
-    item.session.stash[exec_count_key] = item.execution_count
-    if not item.session.stash.get(start_time_key, None):
-        item.session.stash[start_time_key] = time.time()
-    if item.session.stash.get(add_next_key, None) is None:
-        item.session.stash[add_next_key] = True
-    start_time = item.session.stash[start_time_key]
-    if item.session.stash.get(next_run_items_key, None) is None:
-        item.session.stash[next_run_items_key] = []
+    rerun_delay_seconds = item.session.config.stash.get(rerun_delay_key, 0)
+    item.session.stash[rerun_count_key] = item.stash[rerun_count_key]  # used for progress  bar
 
-    if nextitem is None and item.execution_count == 0 and not get_rerun_fresh(item.session.config):
+    if (
+        nextitem is None
+        and item.stash[rerun_count_key] == 0
+        and not item.session.config.stash.get(rerun_fresh_key, False)
+    ):
         item = _prepare_next_item(item)
         nextitem = item
         item.session.items.append(item)
         item.session.stash[add_next_key] = False
-    item = _prepare_next_item(item)
     if item.session.stash[add_next_key]:
+        # print("")
+        # print(f"ITEM name: {item._nodeid}")
+        # print(f"  count:  {item.stash.get(rerun_count_key, -1)}")
+        item = _prepare_next_item(item)
+        # print(f"  count2: {item.stash.get(rerun_count_key, -1)}")
         item.session.stash[next_run_items_key].append(item)
     else:
         item.session.stash[add_next_key] = True
     if _last_item(item, nextitem) and _time_not_up(item) and _count_not_up(item):
         if nextitem is not None:
-            _nextitem = _prepare_next_item(nextitem)
-            item.session.stash[next_run_items_key].append(_nextitem)
+            # print("")
+            # print(f"NEXTITEM name: {nextitem._nodeid}")
+            # print(f"  count:  {nextitem.stash.get(rerun_count_key, -1)}")
+            nextitem = _prepare_next_item(nextitem)
+            # print(f"  count2: {nextitem.stash.get(rerun_count_key, -1)}")
+            item.session.stash[next_run_items_key].append(nextitem)
             item.session.stash[add_next_key] = False
         for _item in item.session.stash.get(next_run_items_key, []):
             item.session.items.append(_item)
@@ -236,10 +289,8 @@ def pytest_runtest_protocol(item: pytest.Item, nextitem: Optional[pytest.Item]):
         if rerun_delay_seconds:
             time.sleep(rerun_delay_seconds)
 
-    ## item.ihook.pytest_runtest_logfinish(nodeid=item.nodeid, location=item.location) return
-
 
 def pytest_collection_modifyitems(session: pytest.Session, config: pytest.Config, items: list[pytest.Item]) -> None:
-    if get_time_seconds(config):
+    if config.stash.get(rerun_time_key, 0):
         for item in items:
             _prepare_next_item(item, _copy=False)
