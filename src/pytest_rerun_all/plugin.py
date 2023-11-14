@@ -103,7 +103,6 @@ def get_rerun_fresh(config: pytest.Config, name="rerun_fresh") -> int:
     rerun_fresh = config.getvalue(name.lower())
     if not rerun_fresh:
         _rerun_fresh_str = os.getenv(name.upper())
-    else:
         try:
             rerun_fresh = bool(int(_rerun_fresh_str))
         except ValueError:
