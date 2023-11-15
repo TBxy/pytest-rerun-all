@@ -186,7 +186,7 @@ def _prepare_next_item(item: pytest.Item, _copy=True):
     if _copy:
         item = copy.copy(item)
     if not getattr(item, store_testname_attr, ""):
-        setattr(item, store_testname_attr, item.nodeid)
+        setattr(item, store_testname_attr, item.name.replace("test_", ""))
     if item.stash.get(rerun_count_key, None) is None:
         item.stash[rerun_count_key] = 0
         if "]" not in item.nodeid:
