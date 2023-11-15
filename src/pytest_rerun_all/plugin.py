@@ -141,7 +141,7 @@ def pytest_configure(config):
     config.stash[rerun_fresh_key] = get_rerun_fresh(config)
 
     config.addinivalue_line("markers", "once: run this test only once")
-    if config.stash[rerun_time_key]:
+    if _use_rerun(config):
         TerminalReporter._get_progress_information_message = _get_progress  # type: ignore
         TerminalReporter.write_fspath_result = _write_fspath_result  # type: ignore
 
@@ -224,9 +224,9 @@ def _count_not_up(item: pytest.Item):
     return item.stash.get(rerun_count_key,0) < rerun_iter
 
 
-def _use_rerun(session: pytest.Session) -> bool:
-    rerun_time_seconds = session.config.stash.get(rerun_time_key, 0)
-    rerun_iter = session.config.stash.get(rerun_iter_key, 0)
+def _use_rerun(config: pytest.Config) -> bool:
+    rerun_time_seconds = config.stash.get(rerun_time_key, 0)
+    rerun_iter = config.stash.get(rerun_iter_key, 0)
     if rerun_time_seconds or rerun_iter:
         return True
     return False
@@ -234,7 +234,7 @@ def _use_rerun(session: pytest.Session) -> bool:
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_runtestloop(session: pytest.Session):
-    if not _use_rerun(session):
+    if not _use_rerun(session.config):
         return
     if not session.stash.get(start_time_key, None):
         session.stash[start_time_key] = time.time()
@@ -246,7 +246,7 @@ def pytest_runtestloop(session: pytest.Session):
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_runtest_protocol(item: pytest.Item, nextitem: Optional[pytest.Item]):
-    if not _use_rerun(item.session):
+    if not _use_rerun(item.session.config):
         return
     reports = runtestprotocol(item, nextitem=nextitem, log=False)
     for report in reports:  # 3 reports: setup, call, teardown
@@ -286,6 +286,6 @@ def pytest_runtest_protocol(item: pytest.Item, nextitem: Optional[pytest.Item]):
 
 
 def pytest_collection_modifyitems(session: pytest.Session, config: pytest.Config, items: list[pytest.Item]) -> None:
-    if config.stash.get(rerun_time_key, 0):
+    if _use_rerun(config):
         for item in items:
             _prepare_next_item(item, _copy=False)
