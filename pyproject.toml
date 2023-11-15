@@ -51,7 +51,7 @@ mkdocs = "^1.5.3"
 pygments = "^2.16.1"
 mkdocstrings = {extras = ["python"], version = "^0.23.0"}
 mkdocs-material = "^9.4.8"
-pytest-store = {git = "git@github.com:TBxy/pytest-store.git",  branch = "main", extras=["pandas"]}
+pytest-store = {git = "https://github.com/TBxy/pytest-store.git",  branch = "main", extras=["pandas"]}
 
 
 [build-system]

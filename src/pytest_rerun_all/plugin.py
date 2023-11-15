@@ -221,7 +221,7 @@ def _count_not_up(item: pytest.Item):
     rerun_iter = item.session.config.stash.get(rerun_iter_key, 0)
     if not rerun_iter:
         return True
-    return item.stash[rerun_count_key] < rerun_iter
+    return item.stash.get(rerun_count_key,0) < rerun_iter
 
 
 def _use_rerun(session: pytest.Session) -> bool:
@@ -253,11 +253,10 @@ def pytest_runtest_protocol(item: pytest.Item, nextitem: Optional[pytest.Item]):
         if report.skipped:
             return
     rerun_delay_seconds = item.session.config.stash.get(rerun_delay_key, 0)
-    item.session.stash[rerun_count_key] = item.stash[rerun_count_key]  # used for progress  bar
-
+    item.session.stash[rerun_count_key] = item.stash.get(rerun_count_key,0)  # used for progress  bar
     if (
         nextitem is None
-        and item.stash[rerun_count_key] == 0
+        and item.stash.get(rerun_count_key,0) == 0
         and not item.session.config.stash.get(rerun_fresh_key, False)
     ):
         item = _prepare_next_item(item)
@@ -265,11 +264,7 @@ def pytest_runtest_protocol(item: pytest.Item, nextitem: Optional[pytest.Item]):
         item.session.items.append(item)
         item.session.stash[add_next_key] = False
     if item.session.stash[add_next_key]:
-        # print("")
-        # print(f"ITEM name: {item._nodeid}")
-        # print(f"  count:  {item.stash.get(rerun_count_key, -1)}")
         item = _prepare_next_item(item)
-        # print(f"  count2: {item.stash.get(rerun_count_key, -1)}")
         item.session.stash[next_run_items_key].append(item)
     else:
         item.session.stash[add_next_key] = True
