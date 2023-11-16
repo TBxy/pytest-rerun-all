@@ -37,7 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Replace _pandas_ dependency with _dateparser_.
 
 
-[0.1.0]: https://github.com/TBxy/pytest-rerun-all/compare/v0.1.0...v0.0.1
+[0.1.0]: https://github.com/TBxy/pytest-rerun-all/compare/v0.0.1...v0.1.0
 
 
 ## [0.0.1] - 2023-11-12
